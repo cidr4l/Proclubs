@@ -29,6 +29,7 @@ import {
   LayoutDashboard,
   Shield,
   ChevronRight,
+  ChevronDown,
   Trash2,
   ThumbsUp,
   RefreshCw,
@@ -36,6 +37,20 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import React, { useState, useEffect } from 'react';
+
+const apiFetch = async (url: string, options: RequestInit = {}) => {
+  const token = localStorage.getItem('vpsl_token');
+  const headers = new Headers(options.headers || {});
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  return fetch(url, { ...options, headers });
+};
+
+const publicApiFetch = async (url: string, options: RequestInit = {}) => {
+  const headers = new Headers(options.headers || {});
+  return fetch(url, { ...options, headers });
+};
 
 const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogout: () => void }) => {
   console.log("AdminPanel rendering for:", userEmail);
@@ -55,41 +70,32 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
 
-  useEffect(() => {
-    if (activeTab === 'championships') {
-      fetchChampionships();
-    } else if (activeTab === 'users') {
-      fetchUsers();
-    }
-  }, [activeTab]);
-
-  const fetchUsers = async () => {
-    console.log("Fetching users...");
+  const handlePromoteUser = async (userId: number) => {
+    if (!window.confirm("Deseja realmente tornar este usuário um administrador?")) return;
     try {
-      const res = await fetch('/api/users');
-      console.log("Fetch users status:", res.status);
-      const data = await res.json();
-      console.log("Fetch users data:", data);
-      if (res.ok && Array.isArray(data)) {
-        setUsers(data);
+      console.log("Promoting user:", userId);
+      const res = await apiFetch(`/api/users/${userId}/role`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'admin' })
+      });
+      console.log("Promote response status:", res.status);
+      if (res.ok) {
+        fetchUsers();
       } else {
-        console.error("Failed to fetch users or data is not an array:", data);
+        const error = await res.json();
+        console.error("Promote error:", error);
+        alert(`Erro ao promover usuário: ${error.error}`);
       }
     } catch (err) {
-      console.error("Failed to fetch users:", err);
+      console.error("Failed to promote user:", err);
     }
   };
-
-  useEffect(() => {
-    if (selectedChamp) {
-      fetchTeams(selectedChamp.id);
-    }
-  }, [selectedChamp]);
 
   const fetchChampionships = async () => {
     console.log("Fetching championships...");
     try {
-      const res = await fetch('/api/championships');
+      const res = await apiFetch('/api/championships');
       console.log("Fetch championships status:", res.status);
       const data = await res.json();
       console.log("Fetch championships data:", data);
@@ -105,9 +111,41 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
     }
   };
 
+  const fetchUsers = async () => {
+    console.log("Fetching users...");
+    try {
+      const res = await apiFetch('/api/users');
+      console.log("Fetch users status:", res.status);
+      const data = await res.json();
+      console.log("Fetch users data:", data);
+      if (res.ok && Array.isArray(data)) {
+        setUsers(data);
+      } else {
+        console.error("Failed to fetch users or data is not an array:", data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch users:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'championships') {
+      fetchChampionships();
+    } else if (activeTab === 'users') {
+      fetchUsers();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (selectedChamp) {
+      fetchTeams(selectedChamp.id);
+    }
+  }, [selectedChamp]);
+
+
   const fetchTeams = async (id: number) => {
     try {
-      const res = await fetch(`/api/championships/${id}/teams`);
+      const res = await apiFetch(`/api/championships/${id}/teams`);
       const data = await res.json();
       if (Array.isArray(data)) {
         setTeams(data);
@@ -123,7 +161,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
 
   const fetchPlayers = async (teamId: number) => {
     try {
-      const res = await fetch(`/api/teams/${teamId}/players`);
+      const res = await apiFetch(`/api/teams/${teamId}/players`);
       const data = await res.json();
       if (Array.isArray(data)) {
         setPlayers(data);
@@ -139,7 +177,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
     console.log("Creating championship with name:", newChampName);
     setLoading(true);
     try {
-      const res = await fetch('/api/championships', {
+      const res = await apiFetch('/api/championships', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newChampName, description: newChampDesc })
@@ -150,7 +188,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
         console.log("Championship created successfully");
         setNewChampName('');
         setNewChampDesc('');
-        await fetchChampionships();
+        fetchChampionships();
       } else {
         const errData = await res.json();
         console.error("Failed to create championship:", errData);
@@ -167,7 +205,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
   const handleToggleActive = async (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
     try {
-      const res = await fetch(`/api/championships/${id}/toggle-active`, {
+      const res = await apiFetch(`/api/championships/${id}/toggle-active`, {
         method: 'PATCH'
       });
       if (res.ok) {
@@ -187,7 +225,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
     if (!newTeamName || !selectedChamp) return;
     setLoading(true);
     try {
-      await fetch(`/api/championships/${selectedChamp.id}/teams`, {
+      await apiFetch(`/api/championships/${selectedChamp.id}/teams`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newTeamName })
@@ -202,14 +240,22 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
   };
 
   const handleDeleteTeam = async (teamId: number) => {
+    console.log("handleDeleteTeam called with teamId:", teamId);
+    console.log("selectedChamp:", selectedChamp);
     if (!selectedChamp || !window.confirm("Deseja realmente excluir este time?")) return;
     try {
-      const res = await fetch(`/api/championships/${selectedChamp.id}/teams/${teamId}`, {
+      const url = `/api/championships/${selectedChamp.id}/teams/${teamId}`;
+      console.log("DELETE URL:", url);
+      const res = await apiFetch(url, {
         method: 'DELETE'
       });
+      console.log("DELETE response status:", res.status);
       if (res.ok) {
         fetchTeams(selectedChamp.id);
         if (selectedTeam?.id === teamId) setSelectedTeam(null);
+      } else {
+        const errorData = await res.json();
+        console.error("Failed to delete team:", errorData);
       }
     } catch (err) {
       console.error("Failed to delete team:", err);
@@ -221,7 +267,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
     if (!newPlayerName || !selectedTeam) return;
     setLoading(true);
     try {
-      await fetch(`/api/teams/${selectedTeam.id}/players`, {
+      await apiFetch(`/api/teams/${selectedTeam.id}/players`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newPlayerName })
@@ -238,7 +284,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
   const handleDeletePlayer = async (playerId: number) => {
     if (!selectedTeam || !window.confirm("Deseja realmente excluir este jogador?")) return;
     try {
-      await fetch(`/api/players/${playerId}`, { method: 'DELETE' });
+      await apiFetch(`/api/players/${playerId}`, { method: 'DELETE' });
       fetchPlayers(selectedTeam.id);
     } catch (err) {
       console.error("Failed to delete player:", err);
@@ -249,7 +295,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
     e.stopPropagation();
     if (!window.confirm("Deseja realmente excluir este campeonato e todos os seus times?")) return;
     try {
-      const res = await fetch(`/api/championships/${id}`, {
+      const res = await apiFetch(`/api/championships/${id}`, {
         method: 'DELETE'
       });
       if (res.ok) {
@@ -268,7 +314,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
     if (!selectedChamp || !editName) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/championships/${selectedChamp.id}`, {
+      const res = await apiFetch(`/api/championships/${selectedChamp.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: editName, description: editDesc })
@@ -338,7 +384,70 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
       {/* Main Content */}
       <div className="flex-1 overflow-auto p-8">
         <div className="max-w-6xl mx-auto">
-          {activeTab === 'championships' ? (
+          {activeTab === 'users' ? (
+            <>
+              <header className="mb-12 flex justify-between items-center">
+                <div>
+                  <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Gerenciamento de Usuários</h1>
+                  <p className="text-gray-500 mt-1">Visualize todos os usuários cadastrados na plataforma.</p>
+                </div>
+                <button 
+                  onClick={fetchUsers}
+                  className="p-3 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 transition-all text-gray-400 hover:text-red-500 shadow-sm"
+                  title="Atualizar Lista"
+                >
+                  <RefreshCw size={20} />
+                </button>
+              </header>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-100">
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase text-gray-400 tracking-widest">E-mail</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase text-gray-400 tracking-widest">Papel</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase text-gray-400 tracking-widest">Verificado</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase text-gray-400 tracking-widest">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {users.map((user) => (
+                        <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 font-bold text-gray-900">{user.email}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${user.role === 'admin' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
+                              {user.role || 'user'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500">{user.verified ? 'Sim' : 'Não'}</td>
+                          <td className="px-6 py-4">
+                            {user.role !== 'admin' ? (
+                              <button 
+                                onClick={() => handlePromoteUser(user.id)}
+                                className="text-xs font-bold text-red-500 hover:text-red-700 transition-colors"
+                              >
+                                Tornar Admin
+                              </button>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">Administrador</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {users.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-6 py-12 text-center text-gray-400 text-sm italic">
+                            Nenhum usuário encontrado.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : (
             <>
               <header className="mb-12 flex justify-between items-end">
                 <div>
@@ -398,10 +507,10 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
                     </div>
                     <div className="divide-y divide-gray-50">
                       {championships.map((champ) => (
-                        <button 
+                        <div 
                           key={champ.id}
                           onClick={() => setSelectedChamp(champ)}
-                          className={`w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors text-left ${selectedChamp?.id === champ.id ? 'bg-red-50 border-l-4 border-red-500' : ''}`}
+                          className={`w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer text-left ${selectedChamp?.id === champ.id ? 'bg-red-50 border-l-4 border-red-500' : ''}`}
                         >
                           <div className="flex items-center gap-3">
                             <button 
@@ -426,7 +535,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
                             </button>
                             <ChevronRight size={18} className="text-gray-300" />
                           </div>
-                        </button>
+                        </div>
                       ))}
                       {championships.length === 0 && (
                         <div className="p-8 text-center text-gray-400 text-sm italic">Nenhum campeonato cadastrado.</div>
@@ -505,24 +614,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
                         </div>
 
                         <div className="border-t border-gray-100 pt-8">
-                          <h3 className="text-sm font-bold uppercase text-gray-400 mb-6 flex items-center gap-2">
-                            <Shield size={16} /> Adicionar Time Participante
-                          </h3>
-                          <form onSubmit={handleAddTeam} className="flex gap-4">
-                            <input 
-                              type="text" 
-                              value={newTeamName}
-                              onChange={(e) => setNewTeamName(e.target.value)}
-                              className="flex-1 px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-500 outline-none transition-all text-sm"
-                              placeholder="Nome do Time (Ex: Flamengo eSports)"
-                            />
-                            <button 
-                              disabled={loading}
-                              className="bg-red-500 text-white font-bold px-8 rounded-xl hover:bg-red-600 transition-all disabled:opacity-50 flex items-center gap-2"
-                            >
-                              <Plus size={18} /> Adicionar
-                            </button>
-                          </form>
+                          <p className="text-sm text-gray-500 italic">O gerenciamento de times agora é feito pelos próprios usuários na página pública do campeonato.</p>
                         </div>
                       </div>
 
@@ -554,7 +646,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
                                       e.stopPropagation();
                                       handleDeleteTeam(team.id);
                                     }}
-                                    className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1"
+                                    className="text-gray-400 hover:text-red-500 transition-colors sm:opacity-0 sm:group-hover:opacity-100 p-2"
                                   >
                                     <Trash2 size={16} />
                                   </button>
@@ -585,7 +677,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
                                             </div>
                                             <button 
                                               onClick={() => handleDeletePlayer(player.id)}
-                                              className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover/player:opacity-100"
+                                              className="text-gray-400 hover:text-red-500 transition-colors sm:opacity-0 sm:group-hover/player:opacity-100 p-1"
                                             >
                                               <X size={12} />
                                             </button>
@@ -595,22 +687,6 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
                                           <p className="text-[10px] text-gray-400 italic text-center py-2">Nenhum jogador cadastrado.</p>
                                         )}
                                       </div>
-
-                                      <form onSubmit={handleAddPlayer} className="flex gap-2 pt-2">
-                                        <input 
-                                          type="text"
-                                          value={newPlayerName}
-                                          onChange={(e) => setNewPlayerName(e.target.value)}
-                                          placeholder="Novo Jogador..."
-                                          className="flex-1 text-xs px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg focus:ring-1 focus:ring-red-500 outline-none"
-                                        />
-                                        <button 
-                                          disabled={loading}
-                                          className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all disabled:opacity-50"
-                                        >
-                                          <Plus size={14} />
-                                        </button>
-                                      </form>
                                     </div>
                                   </motion.div>
                                 )}
@@ -637,67 +713,6 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
                       <p className="text-gray-400 max-w-xs">Escolha uma liga na lista ao lado para gerenciar os times participantes.</p>
                     </div>
                   )}
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <header className="mb-12 flex justify-between items-center">
-                <div>
-                  <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Gerenciamento de Usuários</h1>
-                  <p className="text-gray-500 mt-1">Visualize todos os usuários cadastrados na plataforma.</p>
-                </div>
-                <button 
-                  onClick={fetchUsers}
-                  className="p-3 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 transition-all text-gray-400 hover:text-red-500 shadow-sm"
-                  title="Atualizar Lista"
-                >
-                  <RefreshCw size={20} />
-                </button>
-              </header>
-
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-100">
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase text-gray-400 tracking-widest">ID</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase text-gray-400 tracking-widest">E-mail</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase text-gray-400 tracking-widest">Status</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase text-gray-400 tracking-widest">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {users.map((user) => (
-                        <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-4 text-sm font-mono text-gray-400">#{user.id}</td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs">
-                                {user.email ? user.email[0].toUpperCase() : '?'}
-                              </div>
-                              <span className="text-sm font-bold text-gray-900">{user.email || 'Sem e-mail'}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded ${user.verified ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'}`}>
-                              {user.verified ? 'Verificado' : 'Pendente'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <button className="text-xs font-bold uppercase text-red-500 hover:underline">Bloquear</button>
-                          </td>
-                        </tr>
-                      ))}
-                      {users.length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="px-6 py-12 text-center text-gray-400 text-sm italic">
-                            Nenhum usuário encontrado.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
                 </div>
               </div>
             </>
@@ -757,13 +772,14 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, initialMode = 'login' }: { 
 
     try {
       if (mode === 'login') {
-        const res = await fetch('/api/login', {
+        const res = await apiFetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password })
         });
         const data = await res.json();
         if (res.ok) {
+          localStorage.setItem('vpsl_token', data.token);
           onAuthSuccess(email);
           onClose();
         } else if (res.status === 403 && data.needsVerification) {
@@ -772,7 +788,7 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, initialMode = 'login' }: { 
           setError(data.error);
         }
       } else if (mode === 'register') {
-        const res = await fetch('/api/register', {
+        const res = await publicApiFetch('/api/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password })
@@ -785,20 +801,21 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, initialMode = 'login' }: { 
           setError(data.error);
         }
       } else if (mode === 'verify') {
-        const res = await fetch('/api/verify', {
+        const res = await publicApiFetch('/api/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, code })
         });
         const data = await res.json();
         if (res.ok) {
+          localStorage.setItem('vpsl_token', data.token);
           onAuthSuccess(email);
           onClose();
         } else {
           setError(data.error);
         }
       } else if (mode === 'forgot-password') {
-        const res = await fetch('/api/forgot-password', {
+        const res = await publicApiFetch('/api/forgot-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email })
@@ -806,12 +823,12 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, initialMode = 'login' }: { 
         const data = await res.json();
         if (res.ok) {
           setMode('reset-password');
-          setError(`DEMO: Use o código ${data.demoCode}`);
+          setError(data.demoCode ? `DEMO: Use o código ${data.demoCode}` : 'Código enviado para seu e-mail.');
         } else {
           setError(data.error);
         }
       } else if (mode === 'reset-password') {
-        const res = await fetch('/api/reset-password', {
+        const res = await publicApiFetch('/api/reset-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, code, newPassword: password })
@@ -869,14 +886,14 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, initialMode = 'login' }: { 
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {(mode !== 'verify' && mode !== 'reset-password') && (
-              <div>
+            <div>
                 <label className="block text-xs font-bold uppercase text-gray-400 mb-1">E-mail</label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                   <input 
                     type="email" 
                     required
+                    disabled={mode === 'reset-password'}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all text-sm"
@@ -884,7 +901,6 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, initialMode = 'login' }: { 
                   />
                 </div>
               </div>
-            )}
 
             {(mode === 'login' || mode === 'register' || mode === 'reset-password') && (
               <div>
@@ -1012,72 +1028,147 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, initialMode = 'login' }: { 
   );
 };
 
-const Navbar = ({ isLoggedIn, userEmail, onOpenAuth, onLogout }: { isLoggedIn: boolean, userEmail: string | null, onOpenAuth: () => void, onLogout: () => void }) => (
-  <nav className="bg-[#1a1a1a] text-white py-4 px-6 sticky top-0 z-50 shadow-lg">
-    <div className="max-w-7xl mx-auto flex items-center justify-between">
-      <div className="flex items-center gap-8">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center overflow-hidden border border-gray-800">
-            <img 
-              src="/logo.png" 
-              alt="ProClubs League" 
-              className="w-full h-full object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-                (e.target as HTMLImageElement).parentElement!.innerHTML = '<span class="text-black font-black italic text-xl">PL</span>';
-              }}
-            />
-          </div>
-          <div className="text-2xl font-black tracking-tighter italic text-white uppercase">
-            ProClubs<span className="text-red-500">League</span>
-          </div>
-        </div>
-        <div className="hidden lg:flex items-center gap-6 text-xs font-bold uppercase tracking-wider">
-          <a href="#" className="hover:text-red-500 transition-colors">Torneios Rápidos</a>
-          <a href="#" className="hover:text-red-500 transition-colors">1X1</a>
-          <a href="#" className="hover:text-red-500 transition-colors">Campeonatos</a>
-          <a href="#" className="hover:text-red-500 transition-colors">Clubes</a>
-          <a href="#" className="hover:text-red-500 transition-colors">Jogadores</a>
-          <a href="#" className="hover:text-red-500 transition-colors">Tribunal</a>
-          <a href="#" className="hover:text-red-500 transition-colors">Suporte</a>
-        </div>
-      </div>
-      <div className="flex items-center gap-4">
-        <button className="bg-purple-600 hover:bg-purple-700 px-4 py-1.5 rounded text-xs font-bold uppercase transition-colors">Loja</button>
-        
-        {isLoggedIn ? (
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase text-emerald-400">
-              <User size={14} />
-              <span className="max-w-[100px] truncate">{userEmail}</span>
-            </div>
-            <button 
-              onClick={onLogout}
-              className="text-xs font-bold uppercase hover:text-red-500 transition-colors flex items-center gap-1"
-            >
-              <LogOut size={14} /> Sair
-            </button>
-          </div>
-        ) : (
-          <button 
-            onClick={onOpenAuth}
-            className="text-xs font-bold uppercase hover:text-red-500 transition-colors"
-          >
-            Entrar
-          </button>
-        )}
+const Navbar = ({ 
+  isLoggedIn, 
+  userEmail, 
+  userRole,
+  onOpenAuth, 
+  onLogout, 
+  champs, 
+  onSelectChamp,
+  onGoHome,
+  onGoAdmin,
+  onGoUserPanel
+}: { 
+  isLoggedIn: boolean, 
+  userEmail: string | null, 
+  userRole: string | null,
+  onOpenAuth: () => void, 
+  onLogout: () => void,
+  champs: any[],
+  onSelectChamp: (champ: any) => void,
+  onGoHome: () => void,
+  onGoAdmin: () => void,
+  onGoUserPanel: () => void
+}) => {
+  const [isChampMenuOpen, setIsChampMenuOpen] = useState(false);
 
-        <div className="flex items-center gap-3 ml-2">
-          <Search size={18} className="cursor-pointer hover:text-red-500" />
-          <div className="relative cursor-pointer hover:text-red-500">
-            <ShoppingCart size={18} />
-            <span className="absolute -top-2 -right-2 bg-red-500 text-[10px] w-4 h-4 rounded-full flex items-center justify-center">0</span>
+  return (
+    <nav className="bg-[#1a1a1a] text-white py-4 px-6 sticky top-0 z-50 shadow-lg">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-2 cursor-pointer" onClick={onGoHome}>
+            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center overflow-hidden border border-gray-800">
+              <img 
+                src="/logo.png" 
+                alt="ProClubs League" 
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                  (e.target as HTMLImageElement).parentElement!.innerHTML = '<span class="text-black font-black italic text-xl">PL</span>';
+                }}
+              />
+            </div>
+            <div className="text-2xl font-black tracking-tighter italic text-white uppercase">
+              ProClubs<span className="text-red-500">League</span>
+            </div>
+          </div>
+          <div className="hidden lg:flex items-center gap-6 text-xs font-bold uppercase tracking-wider relative">
+            <a href="#" className="hover:text-red-500 transition-colors">Torneios Rápidos</a>
+            <a href="#" className="hover:text-red-500 transition-colors">1X1</a>
+            
+            <div 
+              className="relative"
+              onMouseEnter={() => setIsChampMenuOpen(true)}
+              onMouseLeave={() => setIsChampMenuOpen(false)}
+            >
+              <button className="hover:text-red-500 transition-colors uppercase flex items-center gap-1">
+                Campeonatos <ChevronDown size={14} />
+              </button>
+              <AnimatePresence>
+                {isChampMenuOpen && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="absolute top-full left-0 mt-2 w-48 bg-white text-gray-900 rounded-lg shadow-xl overflow-hidden py-2"
+                  >
+                    {champs.length > 0 ? champs.map(champ => (
+                      <button 
+                        key={champ.id}
+                        onClick={() => {
+                          onSelectChamp(champ);
+                          setIsChampMenuOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors font-medium"
+                      >
+                        {champ.name}
+                      </button>
+                    )) : (
+                      <div className="px-4 py-2 text-sm text-gray-500">Nenhum campeonato ativo</div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <a href="#" className="hover:text-red-500 transition-colors">Clubes</a>
+            <a href="#" className="hover:text-red-500 transition-colors">Jogadores</a>
+            <a href="#" className="hover:text-red-500 transition-colors">Tribunal</a>
+            <a href="#" className="hover:text-red-500 transition-colors">Suporte</a>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <button className="bg-purple-600 hover:bg-purple-700 px-4 py-1.5 rounded text-xs font-bold uppercase transition-colors">Loja</button>
+          
+          {isLoggedIn ? (
+            <div className="flex items-center gap-4">
+              {userRole === 'admin' && (
+                <button 
+                  onClick={onGoAdmin}
+                  className="text-xs font-bold uppercase text-red-500 hover:text-red-400 transition-colors flex items-center gap-1"
+                >
+                  Painel Admin
+                </button>
+              )}
+              <button 
+                onClick={onGoUserPanel}
+                className="text-xs font-bold uppercase text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1"
+              >
+                Meu Painel
+              </button>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase text-gray-400">
+                <User size={14} />
+                <span className="max-w-[100px] truncate">{userEmail}</span>
+              </div>
+              <button 
+                onClick={onLogout}
+                className="text-xs font-bold uppercase hover:text-red-500 transition-colors flex items-center gap-1"
+              >
+                <LogOut size={14} /> Sair
+              </button>
+            </div>
+          ) : (
+            <button 
+              onClick={onOpenAuth}
+              className="text-xs font-bold uppercase hover:text-red-500 transition-colors"
+            >
+              Entrar
+            </button>
+          )}
+
+          <div className="flex items-center gap-3 ml-2">
+            <Search size={18} className="cursor-pointer hover:text-red-500" />
+            <div className="relative cursor-pointer hover:text-red-500">
+              <ShoppingCart size={18} />
+              <span className="absolute -top-2 -right-2 bg-red-500 text-[10px] w-4 h-4 rounded-full flex items-center justify-center">0</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </nav>
-);
+    </nav>
+  );
+};
 
 // ... (Hero, Partners, FeatureCard, CareerStart, BuildCareer, Banner, InfoSection, StatBlock, Stats, CTA, Footer components remain the same)
 
@@ -1394,7 +1485,7 @@ const PublicChampionships = () => {
   const [players, setPlayers] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch('/api/public/championships')
+    apiFetch('/api/public/championships')
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setChamps(data);
@@ -1406,7 +1497,7 @@ const PublicChampionships = () => {
   const handleViewTeams = (champ: any) => {
     setSelectedChamp(champ);
     setSelectedTeam(null);
-    fetch(`/api/public/championships/${champ.id}/teams`)
+    apiFetch(`/api/public/championships/${champ.id}/teams`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setTeams(data);
@@ -1415,7 +1506,7 @@ const PublicChampionships = () => {
 
   const handleViewPlayers = (team: any) => {
     setSelectedTeam(team);
-    fetch(`/api/public/teams/${team.id}/players`)
+    apiFetch(`/api/public/teams/${team.id}/players`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setPlayers(data);
@@ -1604,20 +1695,427 @@ const Footer = () => (
   </footer>
 );
 
+const UserPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogout: () => void }) => {
+  const [teams, setTeams] = useState<any[]>([]);
+  const [selectedTeam, setSelectedTeam] = useState<any>(null);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamLogo, setNewTeamLogo] = useState('');
+  const [newPlayerName, setNewPlayerName] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const fetchTeams = async () => {
+    try {
+      const res = await apiFetch('/api/my-teams');
+      const data = await res.json();
+      if (Array.isArray(data)) setTeams(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchPlayers = async (teamId: number) => {
+    try {
+      const res = await apiFetch(`/api/teams/${teamId}/players`);
+      const data = await res.json();
+      if (Array.isArray(data)) setPlayers(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchTeams();
+  }, []);
+
+  const handleCreateTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTeamName) return;
+    setLoading(true);
+    try {
+      const res = await apiFetch('/api/my-teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newTeamName, logo_url: newTeamLogo })
+      });
+      if (res.ok) {
+        setNewTeamName('');
+        setNewTeamLogo('');
+        fetchTeams();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTeam = async (teamId: number) => {
+    if (!window.confirm("Deseja excluir este time?")) return;
+    try {
+      const res = await apiFetch(`/api/my-teams/${teamId}`, { method: 'DELETE' });
+      if (res.ok) {
+        if (selectedTeam?.id === teamId) setSelectedTeam(null);
+        fetchTeams();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleAddPlayer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPlayerName || !selectedTeam) return;
+    setLoading(true);
+    try {
+      const res = await apiFetch(`/api/teams/${selectedTeam.id}/players`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newPlayerName })
+      });
+      if (res.ok) {
+        setNewPlayerName('');
+        fetchPlayers(selectedTeam.id);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeletePlayer = async (playerId: number) => {
+    if (!selectedTeam) return;
+    try {
+      const res = await apiFetch(`/api/teams/${selectedTeam.id}/players/${playerId}`, { method: 'DELETE' });
+      if (res.ok) fetchPlayers(selectedTeam.id);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="flex flex-col md:flex-row min-h-screen bg-gray-50">
+      {/* Sidebar */}
+      <div className="w-full md:w-64 bg-white border-r border-gray-200 p-6 flex flex-col">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
+            <User size={20} />
+          </div>
+          <div>
+            <h2 className="font-bold text-gray-900 text-sm">Meu Painel</h2>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider truncate max-w-[150px]">{userEmail}</p>
+          </div>
+        </div>
+        <nav className="flex-1 space-y-2">
+          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-50 text-emerald-600 font-bold text-sm transition-all">
+            <Shield size={18} /> Meus Times
+          </button>
+        </nav>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 p-8">
+        <div className="max-w-4xl mx-auto space-y-8">
+          <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+            <h3 className="text-lg font-bold uppercase text-gray-900 mb-6 flex items-center gap-2">
+              <Plus size={20} className="text-emerald-500" /> Criar Novo Time
+            </h3>
+            <form onSubmit={handleCreateTeam} className="flex flex-col md:flex-row gap-4">
+              <input 
+                type="text" 
+                value={newTeamName}
+                onChange={(e) => setNewTeamName(e.target.value)}
+                className="flex-1 px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm"
+                placeholder="Nome do Time"
+              />
+              <input 
+                type="text" 
+                value={newTeamLogo}
+                onChange={(e) => setNewTeamLogo(e.target.value)}
+                className="flex-1 px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm"
+                placeholder="URL do Escudo (opcional)"
+              />
+              <button 
+                disabled={loading}
+                className="bg-emerald-500 text-white font-bold px-8 rounded-xl hover:bg-emerald-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2 py-3 md:py-0"
+              >
+                <Plus size={18} /> Criar
+              </button>
+            </form>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="p-6 border-b border-gray-50">
+              <h2 className="text-lg font-bold uppercase flex items-center gap-2">
+                <Shield size={20} className="text-emerald-500" /> Meus Times ({teams.length})
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6">
+              {teams.map((team) => (
+                <div key={team.id} className="space-y-2">
+                  <div 
+                    onClick={() => {
+                      setSelectedTeam(selectedTeam?.id === team.id ? null : team);
+                      if (selectedTeam?.id !== team.id) fetchPlayers(team.id);
+                    }}
+                    className={`p-4 rounded-xl border transition-all flex items-center justify-between group cursor-pointer ${selectedTeam?.id === team.id ? 'bg-emerald-50 border-emerald-200 shadow-sm' : 'bg-gray-50 border-gray-100 hover:border-gray-200'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center border transition-colors overflow-hidden ${selectedTeam?.id === team.id ? 'bg-white text-emerald-500 border-emerald-100' : 'bg-white text-slate-400 border-gray-100'}`}>
+                        {team.logo_url ? <img src={team.logo_url} alt={team.name} className="w-full h-full object-cover" /> : <Shield size={20} />}
+                      </div>
+                      <span className="font-bold text-gray-800">{team.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteTeam(team.id);
+                        }}
+                        className="text-gray-400 hover:text-red-500 transition-colors sm:opacity-0 sm:group-hover:opacity-100 p-2"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                      <ChevronRight size={16} className={`text-gray-300 transition-transform ${selectedTeam?.id === team.id ? 'rotate-90 text-emerald-500' : ''}`} />
+                    </div>
+                  </div>
+                  
+                  <AnimatePresence>
+                    {selectedTeam?.id === team.id && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden bg-white border border-emerald-100 rounded-xl ml-4"
+                      >
+                        <div className="p-4 space-y-4">
+                          <div className="flex items-center justify-between border-b border-gray-50 pb-2">
+                            <h4 className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Jogadores</h4>
+                            <span className="text-[10px] font-bold text-emerald-500">{players.length}</span>
+                          </div>
+                          
+                          <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                            {players.map(player => (
+                              <div key={player.id} className="flex items-center justify-between text-sm py-1 group/player">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
+                                  <span className="text-gray-700">{player.name}</span>
+                                </div>
+                                <button 
+                                  onClick={() => handleDeletePlayer(player.id)}
+                                  className="text-gray-400 hover:text-red-500 transition-colors sm:opacity-0 sm:group-hover/player:opacity-100 p-1"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            ))}
+                            {players.length === 0 && (
+                              <p className="text-[10px] text-gray-400 italic text-center py-2">Nenhum jogador cadastrado.</p>
+                            )}
+                          </div>
+
+                          <form onSubmit={handleAddPlayer} className="flex gap-2 pt-2">
+                            <input 
+                              type="text"
+                              value={newPlayerName}
+                              onChange={(e) => setNewPlayerName(e.target.value)}
+                              placeholder="Novo Jogador..."
+                              className="flex-1 text-xs px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                            />
+                            <button 
+                              disabled={loading}
+                              className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all disabled:opacity-50"
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </form>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ))}
+              {teams.length === 0 && (
+                <div className="col-span-full py-12 text-center">
+                  <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-200">
+                    <Shield size={32} />
+                  </div>
+                  <p className="text-gray-400 text-sm italic">Você ainda não criou nenhum time.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ChampionshipDetails = ({ champ, isLoggedIn, onOpenAuth, onGoUserPanel }: any) => {
+  const [teams, setTeams] = useState<any[]>([]);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const [myTeams, setMyTeams] = useState<any[]>([]);
+  const [selectedMyTeamId, setSelectedMyTeamId] = useState('');
+
+  const fetchTeams = async () => {
+    try {
+      const res = await apiFetch(`/api/public/championships/${champ.id}/teams`);
+      const data = await res.json();
+      if (Array.isArray(data)) setTeams(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchMyTeams = async () => {
+    if (!isLoggedIn) return;
+    try {
+      const res = await apiFetch('/api/my-teams');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setMyTeams(data);
+        if (data.length > 0) setSelectedMyTeamId(data[0].id.toString());
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchTeams();
+    fetchMyTeams();
+  }, [champ.id, isLoggedIn]);
+
+  const handleEnrollTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMyTeamId) return;
+    setLoading(true);
+    try {
+      const res = await apiFetch(`/api/championships/${champ.id}/enroll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ team_id: Number(selectedMyTeamId) })
+      });
+      if (res.ok) {
+        fetchTeams();
+        alert('Time inscrito com sucesso!');
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Erro ao inscrever time');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao inscrever time');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto py-20 px-6">
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 mb-8">
+        <h1 className="text-4xl font-black uppercase text-gray-900 mb-4">{champ.name}</h1>
+        <p className="text-gray-600 text-lg">{champ.description}</p>
+      </div>
+
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 mb-8">
+        <h2 className="text-2xl font-bold uppercase text-gray-900 mb-6">Inscrever Time</h2>
+        {isLoggedIn ? (
+          myTeams.length > 0 ? (
+            <form onSubmit={handleEnrollTeam} className="flex flex-col sm:flex-row gap-4">
+              <select 
+                value={selectedMyTeamId}
+                onChange={(e) => setSelectedMyTeamId(e.target.value)}
+                className="flex-1 px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-500 outline-none transition-all"
+              >
+                {myTeams.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <button 
+                disabled={loading}
+                className="bg-red-500 text-white font-bold px-8 py-3 rounded-xl hover:bg-red-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <Plus size={18} /> Inscrever
+              </button>
+            </form>
+          ) : (
+            <div className="bg-gray-50 p-6 rounded-xl text-center border border-gray-100">
+              <p className="text-gray-600 mb-4">Você ainda não tem nenhum time criado.</p>
+              <button 
+                onClick={onGoUserPanel}
+                className="bg-emerald-500 text-white font-bold px-8 py-3 rounded-xl hover:bg-emerald-600 transition-all"
+              >
+                Criar Meu Time
+              </button>
+            </div>
+          )
+        ) : (
+          <div className="bg-gray-50 p-6 rounded-xl text-center border border-gray-100">
+            <p className="text-gray-600 mb-4">Você precisa estar logado para cadastrar seu time neste campeonato.</p>
+            <button 
+              onClick={() => onOpenAuth('login')}
+              className="bg-slate-900 text-white font-bold px-8 py-3 rounded-xl hover:bg-slate-800 transition-all"
+            >
+              Fazer Login
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+        <h2 className="text-2xl font-bold uppercase text-gray-900 mb-6 border-b border-gray-100 pb-4">Times Inscritos ({teams.length})</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {teams.map(team => (
+            <div key={team.id} className="p-4 bg-gray-50 border border-gray-100 rounded-xl flex items-center gap-3">
+              <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center border border-gray-100 text-gray-400 overflow-hidden">
+                {team.logo_url ? <img src={team.logo_url} alt={team.name} className="w-full h-full object-cover" /> : <Shield size={20} />}
+              </div>
+              <span className="font-bold text-gray-800">{team.name}</span>
+            </div>
+          ))}
+          {teams.length === 0 && (
+            <div className="col-span-full py-8 text-center text-gray-400 italic">
+              Nenhum time inscrito ainda. Seja o primeiro!
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authInitialMode, setAuthInitialMode] = useState<'login' | 'register'>('login');
+  const [currentView, setCurrentView] = useState<'home' | 'admin' | 'userPanel' | 'championship'>('home');
+  const [selectedPublicChamp, setSelectedPublicChamp] = useState<any>(null);
+  const [publicChamps, setPublicChamps] = useState<any[]>([]);
+
+  useEffect(() => {
+    apiFetch('/api/public/championships')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setPublicChamps(data);
+      })
+      .catch(err => console.error(err));
+  }, []);
 
   useEffect(() => {
     console.log("Checking user session...");
-    fetch('/api/user')
+    apiFetch('/api/user')
       .then(res => res.json())
       .then(data => {
         console.log("User session data:", data);
         setIsLoggedIn(data.loggedIn);
         setUserEmail(data.email || null);
+        setUserRole(data.role || null);
       })
       .catch(err => console.error("Error checking user:", err));
   }, []);
@@ -1625,13 +2123,22 @@ export default function App() {
   const handleAuthSuccess = (email: string) => {
     setIsLoggedIn(true);
     setUserEmail(email);
+    // Fetch role after login
+    apiFetch('/api/user')
+      .then(res => res.json())
+      .then(data => {
+        setUserRole(data.role || null);
+      });
   };
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/logout', { method: 'POST' });
+      await apiFetch('/api/logout', { method: 'POST' });
+      localStorage.removeItem('vpsl_token');
       setIsLoggedIn(false);
       setUserEmail(null);
+      setUserRole(null);
+      setCurrentView('home');
     } catch (error) {
       console.error("Logout error:", error);
     }
@@ -1644,25 +2151,43 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col selection:bg-red-500 selection:text-white">
-      {isLoggedIn ? (
-        <AdminPanel userEmail={userEmail} onLogout={handleLogout} />
-      ) : (
-        <>
-          <Navbar 
-            isLoggedIn={isLoggedIn} 
-            userEmail={userEmail} 
-            onOpenAuth={() => handleOpenAuth('login')} 
-            onLogout={handleLogout} 
-          />
-          
-          <AuthModal 
-            isOpen={isAuthModalOpen} 
-            onClose={() => setIsAuthModalOpen(false)} 
-            onAuthSuccess={handleAuthSuccess}
-            initialMode={authInitialMode}
-          />
+      <Navbar 
+        isLoggedIn={isLoggedIn} 
+        userEmail={userEmail} 
+        userRole={userRole}
+        onOpenAuth={() => handleOpenAuth('login')} 
+        onLogout={handleLogout} 
+        champs={publicChamps}
+        onSelectChamp={(champ) => {
+          setSelectedPublicChamp(champ);
+          setCurrentView('championship');
+        }}
+        onGoHome={() => setCurrentView('home')}
+        onGoAdmin={() => setCurrentView('admin')}
+        onGoUserPanel={() => setCurrentView('userPanel')}
+      />
+      
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)} 
+        onAuthSuccess={handleAuthSuccess}
+        initialMode={authInitialMode}
+      />
 
-          <main className="flex-grow">
+      <main className="flex-grow">
+        {currentView === 'admin' && isLoggedIn && userRole === 'admin' ? (
+          <AdminPanel userEmail={userEmail} onLogout={handleLogout} />
+        ) : currentView === 'userPanel' && isLoggedIn ? (
+          <UserPanel userEmail={userEmail} onLogout={handleLogout} />
+        ) : currentView === 'championship' && selectedPublicChamp ? (
+          <ChampionshipDetails 
+            champ={selectedPublicChamp} 
+            isLoggedIn={isLoggedIn} 
+            onOpenAuth={handleOpenAuth} 
+            onGoUserPanel={() => setCurrentView('userPanel')}
+          />
+        ) : (
+          <>
             <Hero onOpenAuth={handleOpenAuth} />
             <Partners />
             <CareerStart />
@@ -1672,10 +2197,10 @@ export default function App() {
             <PublicChampionships />
             <Stats />
             <CTA onOpenAuth={handleOpenAuth} />
-          </main>
-          <Footer />
-        </>
-      )}
+          </>
+        )}
+      </main>
+      <Footer />
     </div>
   );
 }
