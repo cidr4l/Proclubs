@@ -41,12 +41,17 @@ try {
     );
   `);
   console.log("Database tables initialized.");
+  const userCols = db.prepare("PRAGMA table_info(users)").all() as any[];
+  console.log("Users table columns:", userCols.map(c => c.name).join(", "));
+  const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get() as any;
+  console.log("Current user count in database:", userCount.count);
 } catch (err) {
   console.error("Database initialization error:", err);
 }
 
 // Check if active column exists and add it if not
 const columns = db.prepare("PRAGMA table_info(championships)").all() as any[];
+console.log("Championships table columns:", columns.map(c => c.name).join(", "));
 const hasActive = columns.some(col => col.name === 'active');
 if (!hasActive) {
   try {
@@ -188,21 +193,41 @@ app.post("/api/logout", (req, res) => {
   res.json({ success: true });
 });
 
+app.get("/api/users", (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Não autorizado" });
+  try {
+    const users = db.prepare("SELECT id, email, verified FROM users").all();
+    console.log("Fetched users count:", users.length);
+    res.json(users);
+  } catch (err) {
+    console.error("Error fetching users:", err);
+    res.status(500).json({ error: "Erro ao buscar usuários" });
+  }
+});
+
 // Admin Routes (Championships & Teams)
 app.get("/api/championships", (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Não autorizado" });
-  const championships = db.prepare("SELECT * FROM championships ORDER BY created_at DESC").all();
-  res.json(championships);
+  try {
+    const championships = db.prepare("SELECT * FROM championships ORDER BY created_at DESC").all();
+    console.log("Fetched championships count:", championships.length);
+    res.json(championships);
+  } catch (err) {
+    console.error("Error fetching championships:", err);
+    res.status(500).json({ error: "Erro ao buscar campeonatos" });
+  }
 });
 
 app.post("/api/championships", (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Não autorizado" });
+  console.log("POST /api/championships body:", req.body);
   const { name, description } = req.body;
   console.log("Creating championship:", { name, description, userId: req.session.userId });
   if (!name) return res.status(400).json({ error: "Nome é obrigatório" });
 
   try {
-    const info = db.prepare("INSERT INTO championships (name, description, active) VALUES (?, ?, 1)").run(name, description);
+    const info = db.prepare("INSERT INTO championships (name, description) VALUES (?, ?)").run(name, description);
+    console.log("Championship inserted successfully, ID:", info.lastInsertRowid);
     res.json({ id: info.lastInsertRowid, name, description, active: 1 });
   } catch (err: any) {
     console.error("Error inserting championship:", err);

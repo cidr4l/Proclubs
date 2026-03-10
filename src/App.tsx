@@ -30,14 +30,17 @@ import {
   Shield,
   ChevronRight,
   Trash2,
-  ThumbsUp
+  ThumbsUp,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import React, { useState, useEffect } from 'react';
 
 const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogout: () => void }) => {
   console.log("AdminPanel rendering for:", userEmail);
+  const [activeTab, setActiveTab] = useState<'championships' | 'users'>('championships');
   const [championships, setChampionships] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [newChampName, setNewChampName] = useState('');
   const [newChampDesc, setNewChampDesc] = useState('');
   const [selectedChamp, setSelectedChamp] = useState<any>(null);
@@ -46,8 +49,29 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchChampionships();
-  }, []);
+    if (activeTab === 'championships') {
+      fetchChampionships();
+    } else if (activeTab === 'users') {
+      fetchUsers();
+    }
+  }, [activeTab]);
+
+  const fetchUsers = async () => {
+    console.log("Fetching users...");
+    try {
+      const res = await fetch('/api/users');
+      console.log("Fetch users status:", res.status);
+      const data = await res.json();
+      console.log("Fetch users data:", data);
+      if (res.ok && Array.isArray(data)) {
+        setUsers(data);
+      } else {
+        console.error("Failed to fetch users or data is not an array:", data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch users:", err);
+    }
+  };
 
   useEffect(() => {
     if (selectedChamp) {
@@ -59,10 +83,10 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
     console.log("Fetching championships...");
     try {
       const res = await fetch('/api/championships');
-      console.log("Fetch response status:", res.status);
+      console.log("Fetch championships status:", res.status);
       const data = await res.json();
-      console.log("Fetch response data:", data);
-      if (Array.isArray(data)) {
+      console.log("Fetch championships data:", data);
+      if (res.ok && Array.isArray(data)) {
         setChampionships(data);
       } else {
         console.error("Expected array for championships, got:", data);
@@ -93,6 +117,7 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
   const handleCreateChamp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newChampName) return;
+    console.log("Creating championship with name:", newChampName);
     setLoading(true);
     try {
       const res = await fetch('/api/championships', {
@@ -101,16 +126,19 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
         body: JSON.stringify({ name: newChampName, description: newChampDesc })
       });
       
+      console.log("Create championship response status:", res.status);
       if (res.ok) {
+        console.log("Championship created successfully");
         setNewChampName('');
         setNewChampDesc('');
         await fetchChampionships();
       } else {
         const errData = await res.json();
+        console.error("Failed to create championship:", errData);
         alert(`Erro: ${errData.error || 'Falha ao criar campeonato'}`);
       }
     } catch (err) {
-      console.error("Failed to create championship:", err);
+      console.error("Failed to create championship (exception):", err);
       alert("Erro de conexão ao criar campeonato");
     } finally {
       setLoading(false);
@@ -159,14 +187,17 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
           </div>
         </div>
         <nav className="flex-1 p-4 space-y-2">
-          <button className="w-full flex items-center gap-3 px-4 py-3 bg-red-500 rounded-lg text-sm font-bold uppercase tracking-wider transition-all">
-            <LayoutDashboard size={18} /> Painel
-          </button>
-          <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-lg text-sm font-bold uppercase tracking-wider transition-all text-gray-400 hover:text-white">
+          <button 
+            onClick={() => setActiveTab('championships')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold uppercase tracking-wider transition-all ${activeTab === 'championships' ? 'bg-red-500 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+          >
             <Trophy size={18} /> Campeonatos
           </button>
-          <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-lg text-sm font-bold uppercase tracking-wider transition-all text-gray-400 hover:text-white">
-            <Users size={18} /> Times
+          <button 
+            onClick={() => setActiveTab('users')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold uppercase tracking-wider transition-all ${activeTab === 'users' ? 'bg-red-500 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+          >
+            <Users size={18} /> Usuários
           </button>
         </nav>
         <div className="p-6 border-t border-white/10">
@@ -191,190 +222,295 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
       {/* Main Content */}
       <div className="flex-1 overflow-auto p-8">
         <div className="max-w-6xl mx-auto">
-          <header className="mb-12 flex justify-between items-end">
-            <div>
-              <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Gerenciamento de Ligas</h1>
-              <p className="text-gray-500 mt-1">Cadastre novos campeonatos e organize as equipes participantes.</p>
-            </div>
-          </header>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Left Column: Create & List Championships */}
-            <div className="lg:col-span-1 space-y-8">
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h2 className="text-lg font-bold uppercase mb-6 flex items-center gap-2">
-                  <Plus size={20} className="text-red-500" /> Novo Campeonato
-                </h2>
-                <form onSubmit={handleCreateChamp} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-gray-400 mb-1">Nome da Liga</label>
-                    <input 
-                      type="text" 
-                      value={newChampName}
-                      onChange={(e) => setNewChampName(e.target.value)}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-500 outline-none transition-all text-sm"
-                      placeholder="Ex: Série A 2026"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-gray-400 mb-1">Descrição</label>
-                    <textarea 
-                      value={newChampDesc}
-                      onChange={(e) => setNewChampDesc(e.target.value)}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-500 outline-none transition-all text-sm h-24 resize-none"
-                      placeholder="Detalhes do torneio..."
-                    />
-                  </div>
-                  <button 
-                    disabled={loading}
-                    className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition-all disabled:opacity-50"
-                  >
-                    Criar Campeonato
-                  </button>
-                </form>
-              </div>
-
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-6 border-b border-gray-50">
-                  <h2 className="text-lg font-bold uppercase flex items-center gap-2">
-                    <Trophy size={20} className="text-red-500" /> Seus Campeonatos
-                  </h2>
+          {activeTab === 'championships' ? (
+            <>
+              <header className="mb-12 flex justify-between items-end">
+                <div>
+                  <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Gerenciamento de Ligas</h1>
+                  <p className="text-gray-500 mt-1">Cadastre novos campeonatos e organize as equipes participantes.</p>
                 </div>
-                <div className="divide-y divide-gray-50">
-                  {championships.map((champ) => (
-                    <button 
-                      key={champ.id}
-                      onClick={() => setSelectedChamp(champ)}
-                      className={`w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors text-left ${selectedChamp?.id === champ.id ? 'bg-red-50 border-l-4 border-red-500' : ''}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <button 
-                          onClick={(e) => handleToggleActive(e, champ.id)}
-                          className={`p-2 rounded-full transition-all ${champ.active ? 'bg-green-100 text-green-600 hover:bg-green-200' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
-                          title={champ.active ? "Ativo" : "Inativo"}
-                        >
-                          <ThumbsUp size={16} fill={champ.active ? "currentColor" : "none"} />
-                        </button>
-                        <div>
-                          <p className="font-bold text-gray-900">{champ.name}</p>
-                          <p className="text-[10px] text-gray-400 uppercase">{new Date(champ.created_at).toLocaleDateString()}</p>
-                        </div>
-                      </div>
-                      <ChevronRight size={18} className="text-gray-300" />
-                    </button>
-                  ))}
-                  {championships.length === 0 && (
-                    <div className="p-8 text-center text-gray-400 text-sm italic">Nenhum campeonato cadastrado.</div>
-                  )}
-                </div>
-              </div>
-            </div>
+              </header>
 
-            {/* Right Column: Teams Management */}
-            <div className="lg:col-span-2">
-              {selectedChamp ? (
-                <motion.div 
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="space-y-8"
-                >
-                  <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-                    <div className="flex justify-between items-start mb-8">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Left Column: Create & List Championships */}
+                <div className="lg:col-span-1 space-y-8">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h2 className="text-lg font-bold uppercase mb-6 flex items-center gap-2">
+                      <Plus size={20} className="text-red-500" /> Novo Campeonato
+                    </h2>
+                    <form onSubmit={handleCreateChamp} className="space-y-4">
                       <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="px-2 py-1 bg-red-100 text-red-600 text-[10px] font-bold uppercase rounded">ID: #{selectedChamp.id}</span>
-                          <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded ${selectedChamp.active ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                            {selectedChamp.active ? 'Ativo' : 'Inativo'}
-                          </span>
-                          <h2 className="text-2xl font-black text-gray-900 uppercase">{selectedChamp.name}</h2>
-                        </div>
-                        <p className="text-gray-500 text-sm">{selectedChamp.description || 'Sem descrição.'}</p>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-gray-100 pt-8">
-                      <h3 className="text-sm font-bold uppercase text-gray-400 mb-6 flex items-center gap-2">
-                        <Shield size={16} /> Adicionar Time Participante
-                      </h3>
-                      <form onSubmit={handleAddTeam} className="flex gap-4">
+                        <label className="block text-xs font-bold uppercase text-gray-400 mb-1">Nome da Liga</label>
                         <input 
                           type="text" 
-                          value={newTeamName}
-                          onChange={(e) => setNewTeamName(e.target.value)}
-                          className="flex-1 px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-500 outline-none transition-all text-sm"
-                          placeholder="Nome do Time (Ex: Flamengo eSports)"
+                          value={newChampName}
+                          onChange={(e) => setNewChampName(e.target.value)}
+                          className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-500 outline-none transition-all text-sm"
+                          placeholder="Ex: Série A 2026"
                         />
-                        <button 
-                          disabled={loading}
-                          className="bg-red-500 text-white font-bold px-8 rounded-xl hover:bg-red-600 transition-all disabled:opacity-50 flex items-center gap-2"
-                        >
-                          <Plus size={18} /> Adicionar
-                        </button>
-                      </form>
-                    </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-gray-400 mb-1">Descrição</label>
+                        <textarea 
+                          value={newChampDesc}
+                          onChange={(e) => setNewChampDesc(e.target.value)}
+                          className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-500 outline-none transition-all text-sm h-24 resize-none"
+                          placeholder="Detalhes do torneio..."
+                        />
+                      </div>
+                      <button 
+                        disabled={loading}
+                        className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition-all disabled:opacity-50"
+                      >
+                        Criar Campeonato
+                      </button>
+                    </form>
                   </div>
 
                   <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="p-6 border-b border-gray-50 flex justify-between items-center">
                       <h2 className="text-lg font-bold uppercase flex items-center gap-2">
-                        <Users size={20} className="text-red-500" /> Times Inscritos ({teams.length})
+                        <Trophy size={20} className="text-red-500" /> Seus Campeonatos
                       </h2>
+                      <button 
+                        onClick={fetchChampionships}
+                        className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-red-500 transition-all"
+                        title="Atualizar"
+                      >
+                        <RefreshCw size={16} />
+                      </button>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6">
-                      {teams.map((team) => (
-                        <div key={team.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between group">
+                    <div className="divide-y divide-gray-50">
+                      {championships.map((champ) => (
+                        <button 
+                          key={champ.id}
+                          onClick={() => setSelectedChamp(champ)}
+                          className={`w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors text-left ${selectedChamp?.id === champ.id ? 'bg-red-50 border-l-4 border-red-500' : ''}`}
+                        >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-slate-400 border border-gray-100">
-                              <Shield size={20} />
+                            <button 
+                              onClick={(e) => handleToggleActive(e, champ.id)}
+                              className={`p-2 rounded-full transition-all ${champ.active ? 'bg-green-100 text-green-600 hover:bg-green-200' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
+                              title={champ.active ? "Ativo" : "Inativo"}
+                            >
+                              <ThumbsUp size={16} fill={champ.active ? "currentColor" : "none"} />
+                            </button>
+                            <div>
+                              <p className="font-bold text-gray-900">{champ.name}</p>
+                              <p className="text-[10px] text-gray-400 uppercase">{new Date(champ.created_at).toLocaleDateString()}</p>
                             </div>
-                            <span className="font-bold text-gray-800">{team.name}</span>
                           </div>
-                          <button className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
+                          <ChevronRight size={18} className="text-gray-300" />
+                        </button>
                       ))}
-                      {teams.length === 0 && (
-                        <div className="col-span-full py-12 text-center">
-                          <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-200">
-                            <Users size={32} />
-                          </div>
-                          <p className="text-gray-400 text-sm italic">Nenhum time inscrito neste campeonato ainda.</p>
-                        </div>
+                      {championships.length === 0 && (
+                        <div className="p-8 text-center text-gray-400 text-sm italic">Nenhum campeonato cadastrado.</div>
                       )}
                     </div>
                   </div>
-                </motion.div>
-              ) : (
-                <div className="h-full min-h-[400px] flex flex-col items-center justify-center bg-white rounded-2xl border-2 border-dashed border-gray-200 p-12 text-center">
-                  <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6 text-gray-300">
-                    <Trophy size={40} />
-                  </div>
-                  <h3 className="text-xl font-bold text-gray-900 uppercase mb-2">Selecione um Campeonato</h3>
-                  <p className="text-gray-400 max-w-xs">Escolha uma liga na lista ao lado para gerenciar os times participantes.</p>
                 </div>
-              )}
-            </div>
-          </div>
+
+                {/* Right Column: Teams Management */}
+                <div className="lg:col-span-2">
+                  {selectedChamp ? (
+                    <motion.div 
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="space-y-8"
+                    >
+                      <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                        <div className="flex justify-between items-start mb-8">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="px-2 py-1 bg-red-100 text-red-600 text-[10px] font-bold uppercase rounded">ID: #{selectedChamp.id}</span>
+                              <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded ${selectedChamp.active ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                {selectedChamp.active ? 'Ativo' : 'Inativo'}
+                              </span>
+                              <h2 className="text-2xl font-black text-gray-900 uppercase">{selectedChamp.name}</h2>
+                            </div>
+                            <p className="text-gray-500 text-sm">{selectedChamp.description || 'Sem descrição.'}</p>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-gray-100 pt-8">
+                          <h3 className="text-sm font-bold uppercase text-gray-400 mb-6 flex items-center gap-2">
+                            <Shield size={16} /> Adicionar Time Participante
+                          </h3>
+                          <form onSubmit={handleAddTeam} className="flex gap-4">
+                            <input 
+                              type="text" 
+                              value={newTeamName}
+                              onChange={(e) => setNewTeamName(e.target.value)}
+                              className="flex-1 px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-500 outline-none transition-all text-sm"
+                              placeholder="Nome do Time (Ex: Flamengo eSports)"
+                            />
+                            <button 
+                              disabled={loading}
+                              className="bg-red-500 text-white font-bold px-8 rounded-xl hover:bg-red-600 transition-all disabled:opacity-50 flex items-center gap-2"
+                            >
+                              <Plus size={18} /> Adicionar
+                            </button>
+                          </form>
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="p-6 border-b border-gray-50 flex justify-between items-center">
+                          <h2 className="text-lg font-bold uppercase flex items-center gap-2">
+                            <Users size={20} className="text-red-500" /> Times Inscritos ({teams.length})
+                          </h2>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6">
+                          {teams.map((team) => (
+                            <div key={team.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between group">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-slate-400 border border-gray-100">
+                                  <Shield size={20} />
+                                </div>
+                                <span className="font-bold text-gray-800">{team.name}</span>
+                              </div>
+                              <button className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          ))}
+                          {teams.length === 0 && (
+                            <div className="col-span-full py-12 text-center">
+                              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-200">
+                                <Users size={32} />
+                              </div>
+                              <p className="text-gray-400 text-sm italic">Nenhum time inscrito neste campeonato ainda.</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <div className="h-full min-h-[400px] flex flex-col items-center justify-center bg-white rounded-2xl border-2 border-dashed border-gray-200 p-12 text-center">
+                      <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6 text-gray-300">
+                        <Trophy size={40} />
+                      </div>
+                      <h3 className="text-xl font-bold text-gray-900 uppercase mb-2">Selecione um Campeonato</h3>
+                      <p className="text-gray-400 max-w-xs">Escolha uma liga na lista ao lado para gerenciar os times participantes.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <header className="mb-12 flex justify-between items-center">
+                <div>
+                  <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Gerenciamento de Usuários</h1>
+                  <p className="text-gray-500 mt-1">Visualize todos os usuários cadastrados na plataforma.</p>
+                </div>
+                <button 
+                  onClick={fetchUsers}
+                  className="p-3 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 transition-all text-gray-400 hover:text-red-500 shadow-sm"
+                  title="Atualizar Lista"
+                >
+                  <RefreshCw size={20} />
+                </button>
+              </header>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-100">
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase text-gray-400 tracking-widest">ID</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase text-gray-400 tracking-widest">E-mail</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase text-gray-400 tracking-widest">Status</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase text-gray-400 tracking-widest">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {users.map((user) => (
+                        <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 text-sm font-mono text-gray-400">#{user.id}</td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs">
+                                {user.email ? user.email[0].toUpperCase() : '?'}
+                              </div>
+                              <span className="text-sm font-bold text-gray-900">{user.email || 'Sem e-mail'}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded ${user.verified ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'}`}>
+                              {user.verified ? 'Verificado' : 'Pendente'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <button className="text-xs font-bold uppercase text-red-500 hover:underline">Bloquear</button>
+                          </td>
+                        </tr>
+                      ))}
+                      {users.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-6 py-12 text-center text-gray-400 text-sm italic">
+                            Nenhum usuário encontrado.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-const AuthModal = ({ isOpen, onClose, onAuthSuccess }: { isOpen: boolean, onClose: () => void, onAuthSuccess: (email: string) => void }) => {
-  const [mode, setMode] = useState<'login' | 'register' | 'verify' | 'forgot-password' | 'reset-password'>('login');
+const AuthModal = ({ isOpen, onClose, onAuthSuccess, initialMode = 'login' }: { isOpen: boolean, onClose: () => void, onAuthSuccess: (email: string) => void, initialMode?: 'login' | 'register' }) => {
+  const [mode, setMode] = useState<'login' | 'register' | 'verify' | 'forgot-password' | 'reset-password'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+      setError('');
+      
+      const savedEmail = localStorage.getItem('vpsl_email');
+      const savedPass = localStorage.getItem('vpsl_password');
+      const savedRemember = localStorage.getItem('vpsl_remember') === 'true';
+      
+      if (savedRemember) {
+        setEmail(savedEmail || '');
+        setPassword(savedPass || '');
+        setRememberMe(true);
+      } else {
+        setEmail('');
+        setPassword('');
+        setRememberMe(false);
+      }
+      setCode('');
+    }
+  }, [isOpen, initialMode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
+
+    if (rememberMe) {
+      localStorage.setItem('vpsl_email', email);
+      localStorage.setItem('vpsl_password', password);
+      localStorage.setItem('vpsl_remember', 'true');
+    } else {
+      localStorage.removeItem('vpsl_email');
+      localStorage.removeItem('vpsl_password');
+      localStorage.setItem('vpsl_remember', 'false');
+    }
 
     try {
       if (mode === 'login') {
@@ -531,7 +667,16 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }: { isOpen: boolean, onClos
                   </button>
                 </div>
                 {mode === 'login' && (
-                  <div className="text-right mt-1">
+                  <div className="flex items-center justify-between mt-1">
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-red-500 focus:ring-red-500"
+                      />
+                      <span className="text-xs text-gray-500 group-hover:text-gray-700 transition-colors">Lembrar-me</span>
+                    </label>
                     <button 
                       type="button"
                       onClick={() => setMode('forgot-password')}
@@ -693,7 +838,7 @@ const Navbar = ({ isLoggedIn, userEmail, onOpenAuth, onLogout }: { isLoggedIn: b
 
 // ... (Hero, Partners, FeatureCard, CareerStart, BuildCareer, Banner, InfoSection, StatBlock, Stats, CTA, Footer components remain the same)
 
-const Hero = () => (
+const Hero = ({ onOpenAuth }: { onOpenAuth: (mode: 'login' | 'register') => void }) => (
   <section className="hero-gradient relative overflow-hidden py-24 px-6">
     <div className="dot-pattern absolute inset-0 opacity-30"></div>
     <div className="max-w-4xl mx-auto text-center relative z-10">
@@ -718,7 +863,10 @@ const Hero = () => (
         transition={{ delay: 0.2 }}
         className="flex flex-col sm:flex-row items-center justify-center gap-4"
       >
-        <button className="bg-white text-indigo-900 px-8 py-3 rounded font-bold uppercase tracking-wider hover:bg-gray-100 transition-all w-full sm:w-auto">
+        <button 
+          onClick={() => onOpenAuth('register')}
+          className="bg-white text-indigo-900 px-8 py-3 rounded font-bold uppercase tracking-wider hover:bg-gray-100 transition-all w-full sm:w-auto"
+        >
           Registrar
         </button>
         <button className="border-2 border-white text-white px-8 py-3 rounded font-bold uppercase tracking-wider hover:bg-white/10 transition-all w-full sm:w-auto">
@@ -970,17 +1118,23 @@ const Stats = () => (
   </section>
 );
 
-const CTA = () => (
+const CTA = ({ onOpenAuth }: { onOpenAuth: (mode: 'login' | 'register') => void }) => (
   <section className="py-20 bg-white text-center">
     <div className="max-w-4xl mx-auto px-6">
       <h2 className="text-2xl md:text-3xl font-medium text-gray-700 mb-10">
         Junte-se a nós! Construa sua carreira de futebol virtual na ProClubsLeague.com.
       </h2>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-        <button className="bg-emerald-500 hover:bg-emerald-600 text-white px-10 py-3 rounded font-bold uppercase tracking-wider transition-all w-full sm:w-auto">
+        <button 
+          onClick={() => onOpenAuth('register')}
+          className="bg-emerald-500 hover:bg-emerald-600 text-white px-10 py-3 rounded font-bold uppercase tracking-wider transition-all w-full sm:w-auto"
+        >
           Registre-se
         </button>
-        <button className="bg-slate-700 hover:bg-slate-800 text-white px-10 py-3 rounded font-bold uppercase tracking-wider transition-all w-full sm:w-auto">
+        <button 
+          onClick={() => onOpenAuth('login')}
+          className="bg-slate-700 hover:bg-slate-800 text-white px-10 py-3 rounded font-bold uppercase tracking-wider transition-all w-full sm:w-auto"
+        >
           Entrar
         </button>
       </div>
@@ -1045,6 +1199,7 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authInitialMode, setAuthInitialMode] = useState<'login' | 'register'>('login');
 
   useEffect(() => {
     console.log("Checking user session...");
@@ -1073,6 +1228,11 @@ export default function App() {
     }
   };
 
+  const handleOpenAuth = (mode: 'login' | 'register' = 'login') => {
+    setAuthInitialMode(mode);
+    setIsAuthModalOpen(true);
+  };
+
   return (
     <div className="min-h-screen flex flex-col selection:bg-red-500 selection:text-white">
       {isLoggedIn ? (
@@ -1082,25 +1242,26 @@ export default function App() {
           <Navbar 
             isLoggedIn={isLoggedIn} 
             userEmail={userEmail} 
-            onOpenAuth={() => setIsAuthModalOpen(true)} 
+            onOpenAuth={() => handleOpenAuth('login')} 
             onLogout={handleLogout} 
           />
           
           <AuthModal 
             isOpen={isAuthModalOpen} 
             onClose={() => setIsAuthModalOpen(false)} 
-            onAuthSuccess={handleAuthSuccess} 
+            onAuthSuccess={handleAuthSuccess}
+            initialMode={authInitialMode}
           />
 
           <main className="flex-grow">
-            <Hero />
+            <Hero onOpenAuth={handleOpenAuth} />
             <Partners />
             <CareerStart />
             <BuildCareer />
             <Banner />
             <InfoSection />
             <Stats />
-            <CTA />
+            <CTA onOpenAuth={handleOpenAuth} />
           </main>
           <Footer />
         </>
