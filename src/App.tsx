@@ -31,7 +31,8 @@ import {
   ChevronRight,
   Trash2,
   ThumbsUp,
-  RefreshCw
+  RefreshCw,
+  Edit
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import React, { useState, useEffect } from 'react';
@@ -46,7 +47,13 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
   const [selectedChamp, setSelectedChamp] = useState<any>(null);
   const [newTeamName, setNewTeamName] = useState('');
   const [teams, setTeams] = useState<any[]>([]);
+  const [selectedTeam, setSelectedTeam] = useState<any>(null);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [newPlayerName, setNewPlayerName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editDesc, setEditDesc] = useState('');
 
   useEffect(() => {
     if (activeTab === 'championships') {
@@ -114,6 +121,18 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
     }
   };
 
+  const fetchPlayers = async (teamId: number) => {
+    try {
+      const res = await fetch(`/api/teams/${teamId}/players`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setPlayers(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch players:", err);
+    }
+  };
+
   const handleCreateChamp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newChampName) return;
@@ -167,14 +186,111 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
     e.preventDefault();
     if (!newTeamName || !selectedChamp) return;
     setLoading(true);
-    await fetch(`/api/championships/${selectedChamp.id}/teams`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newTeamName })
-    });
-    setNewTeamName('');
-    fetchTeams(selectedChamp.id);
-    setLoading(false);
+    try {
+      await fetch(`/api/championships/${selectedChamp.id}/teams`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newTeamName })
+      });
+      setNewTeamName('');
+      fetchTeams(selectedChamp.id);
+    } catch (err) {
+      console.error("Failed to add team:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTeam = async (teamId: number) => {
+    if (!selectedChamp || !window.confirm("Deseja realmente excluir este time?")) return;
+    try {
+      const res = await fetch(`/api/championships/${selectedChamp.id}/teams/${teamId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        fetchTeams(selectedChamp.id);
+        if (selectedTeam?.id === teamId) setSelectedTeam(null);
+      }
+    } catch (err) {
+      console.error("Failed to delete team:", err);
+    }
+  };
+
+  const handleAddPlayer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPlayerName || !selectedTeam) return;
+    setLoading(true);
+    try {
+      await fetch(`/api/teams/${selectedTeam.id}/players`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newPlayerName })
+      });
+      setNewPlayerName('');
+      fetchPlayers(selectedTeam.id);
+    } catch (err) {
+      console.error("Failed to add player:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeletePlayer = async (playerId: number) => {
+    if (!selectedTeam || !window.confirm("Deseja realmente excluir este jogador?")) return;
+    try {
+      await fetch(`/api/players/${playerId}`, { method: 'DELETE' });
+      fetchPlayers(selectedTeam.id);
+    } catch (err) {
+      console.error("Failed to delete player:", err);
+    }
+  };
+
+  const handleDeleteChamp = async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    if (!window.confirm("Deseja realmente excluir este campeonato e todos os seus times?")) return;
+    try {
+      const res = await fetch(`/api/championships/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        fetchChampionships();
+        if (selectedChamp?.id === id) {
+          setSelectedChamp(null);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to delete championship:", err);
+    }
+  };
+
+  const handleUpdateChamp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedChamp || !editName) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/championships/${selectedChamp.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName, description: editDesc })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setIsEditing(false);
+        fetchChampionships();
+        setSelectedChamp(updated);
+      }
+    } catch (err) {
+      console.error("Failed to update championship:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startEditing = () => {
+    if (!selectedChamp) return;
+    setEditName(selectedChamp.name);
+    setEditDesc(selectedChamp.description || '');
+    setIsEditing(true);
   };
 
   return (
@@ -300,7 +416,16 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
                               <p className="text-[10px] text-gray-400 uppercase">{new Date(champ.created_at).toLocaleDateString()}</p>
                             </div>
                           </div>
-                          <ChevronRight size={18} className="text-gray-300" />
+                          <div className="flex items-center gap-3">
+                            <button 
+                              onClick={(e) => handleDeleteChamp(e, champ.id)}
+                              className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                              title="Excluir"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                            <ChevronRight size={18} className="text-gray-300" />
+                          </div>
                         </button>
                       ))}
                       {championships.length === 0 && (
@@ -320,16 +445,63 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
                     >
                       <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
                         <div className="flex justify-between items-start mb-8">
-                          <div>
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="px-2 py-1 bg-red-100 text-red-600 text-[10px] font-bold uppercase rounded">ID: #{selectedChamp.id}</span>
-                              <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded ${selectedChamp.active ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                                {selectedChamp.active ? 'Ativo' : 'Inativo'}
-                              </span>
-                              <h2 className="text-2xl font-black text-gray-900 uppercase">{selectedChamp.name}</h2>
-                            </div>
-                            <p className="text-gray-500 text-sm">{selectedChamp.description || 'Sem descrição.'}</p>
-                          </div>
+                          {isEditing ? (
+                            <form onSubmit={handleUpdateChamp} className="w-full space-y-4">
+                              <div>
+                                <label className="block text-xs font-bold uppercase text-gray-400 mb-1">Nome da Liga</label>
+                                <input 
+                                  type="text" 
+                                  value={editName}
+                                  onChange={(e) => setEditName(e.target.value)}
+                                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-500 outline-none transition-all text-sm"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold uppercase text-gray-400 mb-1">Descrição</label>
+                                <textarea 
+                                  value={editDesc}
+                                  onChange={(e) => setEditDesc(e.target.value)}
+                                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-500 outline-none transition-all text-sm h-24 resize-none"
+                                />
+                              </div>
+                              <div className="flex gap-2">
+                                <button 
+                                  type="submit"
+                                  disabled={loading}
+                                  className="bg-slate-900 text-white font-bold px-6 py-2 rounded-lg hover:bg-slate-800 transition-all text-sm disabled:opacity-50"
+                                >
+                                  Salvar Alterações
+                                </button>
+                                <button 
+                                  type="button"
+                                  onClick={() => setIsEditing(false)}
+                                  className="bg-gray-100 text-gray-600 font-bold px-6 py-2 rounded-lg hover:bg-gray-200 transition-all text-sm"
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                            </form>
+                          ) : (
+                            <>
+                              <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="px-2 py-1 bg-red-100 text-red-600 text-[10px] font-bold uppercase rounded">ID: #{selectedChamp.id}</span>
+                                  <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded ${selectedChamp.active ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                    {selectedChamp.active ? 'Ativo' : 'Inativo'}
+                                  </span>
+                                  <h2 className="text-2xl font-black text-gray-900 uppercase">{selectedChamp.name}</h2>
+                                </div>
+                                <p className="text-gray-500 text-sm">{selectedChamp.description || 'Sem descrição.'}</p>
+                              </div>
+                              <button 
+                                onClick={startEditing}
+                                className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                                title="Editar"
+                              >
+                                <Edit size={20} />
+                              </button>
+                            </>
+                          )}
                         </div>
 
                         <div className="border-t border-gray-100 pt-8">
@@ -362,16 +534,87 @@ const AdminPanel = ({ userEmail, onLogout }: { userEmail: string | null, onLogou
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6">
                           {teams.map((team) => (
-                            <div key={team.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between group">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-slate-400 border border-gray-100">
-                                  <Shield size={20} />
+                            <div key={team.id} className="space-y-2">
+                              <div 
+                                onClick={() => {
+                                  setSelectedTeam(selectedTeam?.id === team.id ? null : team);
+                                  if (selectedTeam?.id !== team.id) fetchPlayers(team.id);
+                                }}
+                                className={`p-4 rounded-xl border transition-all flex items-center justify-between group cursor-pointer ${selectedTeam?.id === team.id ? 'bg-red-50 border-red-200 shadow-sm' : 'bg-gray-50 border-gray-100 hover:border-gray-200'}`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center border transition-colors ${selectedTeam?.id === team.id ? 'bg-white text-red-500 border-red-100' : 'bg-white text-slate-400 border-gray-100'}`}>
+                                    <Shield size={20} />
+                                  </div>
+                                  <span className="font-bold text-gray-800">{team.name}</span>
                                 </div>
-                                <span className="font-bold text-gray-800">{team.name}</span>
+                                <div className="flex items-center gap-2">
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteTeam(team.id);
+                                    }}
+                                    className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                  <ChevronRight size={16} className={`text-gray-300 transition-transform ${selectedTeam?.id === team.id ? 'rotate-90 text-red-500' : ''}`} />
+                                </div>
                               </div>
-                              <button className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                                <Trash2 size={16} />
-                              </button>
+                              
+                              <AnimatePresence>
+                                {selectedTeam?.id === team.id && (
+                                  <motion.div 
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    className="overflow-hidden bg-white border border-red-100 rounded-xl ml-4"
+                                  >
+                                    <div className="p-4 space-y-4">
+                                      <div className="flex items-center justify-between border-b border-gray-50 pb-2">
+                                        <h4 className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Jogadores</h4>
+                                        <span className="text-[10px] font-bold text-red-500">{players.length}</span>
+                                      </div>
+                                      
+                                      <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                                        {players.map(player => (
+                                          <div key={player.id} className="flex items-center justify-between text-sm py-1 group/player">
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>
+                                              <span className="text-gray-700">{player.name}</span>
+                                            </div>
+                                            <button 
+                                              onClick={() => handleDeletePlayer(player.id)}
+                                              className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover/player:opacity-100"
+                                            >
+                                              <X size={12} />
+                                            </button>
+                                          </div>
+                                        ))}
+                                        {players.length === 0 && (
+                                          <p className="text-[10px] text-gray-400 italic text-center py-2">Nenhum jogador cadastrado.</p>
+                                        )}
+                                      </div>
+
+                                      <form onSubmit={handleAddPlayer} className="flex gap-2 pt-2">
+                                        <input 
+                                          type="text"
+                                          value={newPlayerName}
+                                          onChange={(e) => setNewPlayerName(e.target.value)}
+                                          placeholder="Novo Jogador..."
+                                          className="flex-1 text-xs px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg focus:ring-1 focus:ring-red-500 outline-none"
+                                        />
+                                        <button 
+                                          disabled={loading}
+                                          className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all disabled:opacity-50"
+                                        >
+                                          <Plus size={14} />
+                                        </button>
+                                      </form>
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
                             </div>
                           ))}
                           {teams.length === 0 && (
@@ -1142,6 +1385,172 @@ const CTA = ({ onOpenAuth }: { onOpenAuth: (mode: 'login' | 'register') => void 
   </section>
 );
 
+const PublicChampionships = () => {
+  const [champs, setChamps] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedChamp, setSelectedChamp] = useState<any>(null);
+  const [teams, setTeams] = useState<any[]>([]);
+  const [selectedTeam, setSelectedTeam] = useState<any>(null);
+  const [players, setPlayers] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/public/championships')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setChamps(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleViewTeams = (champ: any) => {
+    setSelectedChamp(champ);
+    setSelectedTeam(null);
+    fetch(`/api/public/championships/${champ.id}/teams`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setTeams(data);
+      });
+  };
+
+  const handleViewPlayers = (team: any) => {
+    setSelectedTeam(team);
+    fetch(`/api/public/teams/${team.id}/players`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setPlayers(data);
+      });
+  };
+
+  if (loading) return null;
+  if (champs.length === 0) return null;
+
+  return (
+    <section className="py-20 bg-white">
+      <div className="max-w-7xl mx-auto px-6">
+        <div className="flex justify-between items-end mb-12">
+          <div>
+            <h2 className="text-3xl font-black uppercase tracking-tighter text-gray-900">Campeonatos em Destaque</h2>
+            <p className="text-gray-500 mt-2">Confira as ligas que estão acontecendo agora na ProClubs League.</p>
+          </div>
+          <div className="hidden md:block">
+            <div className="flex items-center gap-2 text-red-500 font-bold uppercase text-xs tracking-widest">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+              Ao Vivo
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+          <div className="lg:col-span-1 space-y-4">
+            {champs.map((champ) => (
+              <div 
+                key={champ.id} 
+                onClick={() => handleViewTeams(champ)}
+                className={`bg-gray-50 rounded-2xl p-6 border transition-all cursor-pointer group ${selectedChamp?.id === champ.id ? 'border-red-500 bg-red-50/30 ring-1 ring-red-500' : 'border-gray-100 hover:border-gray-200'}`}
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${selectedChamp?.id === champ.id ? 'bg-red-500 text-white' : 'bg-white text-red-500 shadow-sm border border-gray-100'}`}>
+                    <Trophy size={20} />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">#{champ.id}</span>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 uppercase mb-2">{champ.name}</h3>
+                <p className="text-xs text-gray-500 line-clamp-2 mb-4">{champ.description || 'Sem descrição.'}</p>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1 text-[10px] font-bold uppercase text-gray-400">
+                    <Users size={12} /> Inscrições Abertas
+                  </div>
+                  <ChevronRight size={16} className={`text-gray-300 transition-transform ${selectedChamp?.id === champ.id ? 'translate-x-1 text-red-500' : ''}`} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="lg:col-span-2">
+            {selectedChamp ? (
+              <div className="bg-gray-50 rounded-3xl p-8 border border-gray-100 min-h-[400px]">
+                <div className="flex justify-between items-start mb-8">
+                  <div>
+                    <h3 className="text-2xl font-black text-gray-900 uppercase tracking-tight">{selectedChamp.name}</h3>
+                    <p className="text-gray-500 text-sm mt-1">{selectedChamp.description}</p>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedChamp(null)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-bold uppercase text-gray-400 tracking-widest border-b border-gray-200 pb-2">Times Participantes</h4>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                      {teams.map(team => (
+                        <div 
+                          key={team.id}
+                          onClick={() => handleViewPlayers(team)}
+                          className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between group ${selectedTeam?.id === team.id ? 'bg-white border-red-200 shadow-md' : 'bg-white/50 border-gray-100 hover:bg-white hover:border-gray-200'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${selectedTeam?.id === team.id ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                              <Shield size={16} />
+                            </div>
+                            <span className={`text-sm font-bold ${selectedTeam?.id === team.id ? 'text-gray-900' : 'text-gray-600'}`}>{team.name}</span>
+                          </div>
+                          <ChevronRight size={14} className={`text-gray-300 transition-transform ${selectedTeam?.id === team.id ? 'translate-x-1 text-red-500' : ''}`} />
+                        </div>
+                      ))}
+                      {teams.length === 0 && (
+                        <p className="text-sm text-gray-400 italic text-center py-8">Nenhum time inscrito ainda.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-bold uppercase text-gray-400 tracking-widest border-b border-gray-200 pb-2">
+                      {selectedTeam ? `Elenco: ${selectedTeam.name}` : 'Selecione um time'}
+                    </h4>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                      {selectedTeam ? (
+                        <>
+                          {players.map(player => (
+                            <div key={player.id} className="p-3 bg-white rounded-lg border border-gray-100 flex items-center gap-3">
+                              <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                              <span className="text-sm text-gray-700 font-medium">{player.name}</span>
+                            </div>
+                          ))}
+                          {players.length === 0 && (
+                            <p className="text-sm text-gray-400 italic text-center py-8">Nenhum jogador listado.</p>
+                          )}
+                        </>
+                      ) : (
+                        <div className="h-full flex flex-col items-center justify-center py-12 text-center">
+                          <Users size={32} className="text-gray-200 mb-2" />
+                          <p className="text-xs text-gray-400">Clique em um time para ver os jogadores.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="h-full min-h-[400px] flex flex-col items-center justify-center bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 p-12 text-center">
+                <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 text-gray-200 shadow-sm">
+                  <Trophy size={40} />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 uppercase mb-2">Explore as Ligas</h3>
+                <p className="text-gray-400 max-w-xs">Selecione um campeonato ao lado para ver os times participantes e seus elencos.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
 const Footer = () => (
   <footer className="bg-[#1a1a1a] text-gray-400 py-16 px-6">
     <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
@@ -1260,6 +1669,7 @@ export default function App() {
             <BuildCareer />
             <Banner />
             <InfoSection />
+            <PublicChampionships />
             <Stats />
             <CTA onOpenAuth={handleOpenAuth} />
           </main>

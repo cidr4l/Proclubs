@@ -39,6 +39,12 @@ try {
       championship_id INTEGER,
       FOREIGN KEY (championship_id) REFERENCES championships (id)
     );
+    CREATE TABLE IF NOT EXISTS players (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      team_id INTEGER,
+      FOREIGN KEY (team_id) REFERENCES teams (id)
+    );
   `);
   console.log("Database tables initialized.");
   const userCols = db.prepare("PRAGMA table_info(users)").all() as any[];
@@ -82,6 +88,33 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+});
+
+app.get("/api/public/championships", (req, res) => {
+  try {
+    const championships = db.prepare("SELECT * FROM championships WHERE active = 1 ORDER BY created_at DESC").all();
+    res.json(championships);
+  } catch (err) {
+    res.status(500).json({ error: "Erro ao buscar campeonatos" });
+  }
+});
+
+app.get("/api/public/championships/:id/teams", (req, res) => {
+  try {
+    const teams = db.prepare("SELECT * FROM teams WHERE championship_id = ?").all(req.params.id);
+    res.json(teams);
+  } catch (err) {
+    res.status(500).json({ error: "Erro ao buscar times" });
+  }
+});
+
+app.get("/api/public/teams/:id/players", (req, res) => {
+  try {
+    const players = db.prepare("SELECT * FROM players WHERE team_id = ?").all(req.params.id);
+    res.json(players);
+  } catch (err) {
+    res.status(500).json({ error: "Erro ao buscar jogadores" });
+  }
 });
 
 // Auth Routes
@@ -235,6 +268,22 @@ app.post("/api/championships", (req, res) => {
   }
 });
 
+app.patch("/api/championships/:id", (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Não autorizado" });
+  const { id } = req.params;
+  const { name, description } = req.body;
+  if (!name) return res.status(400).json({ error: "Nome é obrigatório" });
+
+  try {
+    db.prepare("UPDATE championships SET name = ?, description = ? WHERE id = ?").run(name, description, id);
+    const updated = db.prepare("SELECT * FROM championships WHERE id = ?").get(id);
+    res.json(updated);
+  } catch (err: any) {
+    console.error("Error updating championship:", err);
+    res.status(500).json({ error: "Erro ao atualizar campeonato" });
+  }
+});
+
 app.patch("/api/championships/:id/toggle-active", (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: "Não autorizado" });
   const { id } = req.params;
@@ -244,6 +293,19 @@ app.patch("/api/championships/:id/toggle-active", (req, res) => {
   const newActive = champ.active ? 0 : 1;
   db.prepare("UPDATE championships SET active = ? WHERE id = ?").run(newActive, id);
   res.json({ success: true, active: newActive });
+});
+
+app.delete("/api/championships/:id", (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Não autorizado" });
+  const { id } = req.params;
+  try {
+    db.prepare("DELETE FROM teams WHERE championship_id = ?").run(id);
+    db.prepare("DELETE FROM championships WHERE id = ?").run(id);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error deleting championship:", err);
+    res.status(500).json({ error: "Erro ao excluir campeonato" });
+  }
 });
 
 app.get("/api/championships/:id/teams", (req, res) => {
@@ -259,6 +321,39 @@ app.post("/api/championships/:id/teams", (req, res) => {
 
   const info = db.prepare("INSERT INTO teams (name, championship_id) VALUES (?, ?)").run(name, req.params.id);
   res.json({ id: info.lastInsertRowid, name, championship_id: req.params.id });
+});
+
+app.delete("/api/championships/:id/teams/:teamId", (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Não autorizado" });
+  const { teamId } = req.params;
+  try {
+    db.prepare("DELETE FROM teams WHERE id = ?").run(teamId);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error deleting team:", err);
+    res.status(500).json({ error: "Erro ao excluir time" });
+  }
+});
+
+app.get("/api/teams/:teamId/players", (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Não autorizado" });
+  const players = db.prepare("SELECT * FROM players WHERE team_id = ?").all(req.params.teamId);
+  res.json(players);
+});
+
+app.post("/api/teams/:teamId/players", (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Não autorizado" });
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: "Nome do jogador é obrigatório" });
+
+  const info = db.prepare("INSERT INTO players (name, team_id) VALUES (?, ?)").run(name, req.params.teamId);
+  res.json({ id: info.lastInsertRowid, name, team_id: req.params.teamId });
+});
+
+app.delete("/api/players/:id", (req, res) => {
+  if (!req.session?.userId) return res.status(401).json({ error: "Não autorizado" });
+  db.prepare("DELETE FROM players WHERE id = ?").run(req.params.id);
+  res.json({ success: true });
 });
 
 // Vite Middleware
